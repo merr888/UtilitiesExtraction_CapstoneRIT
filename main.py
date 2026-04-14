@@ -130,10 +130,43 @@ def extract_values_after_keywords(pdf_path, keyword_offset_dict):
                         'match_type':      'split_lines'
                     })
  
+        # ------------------------------------------------------------------
+        # Method 3: regex fallback for Meter Number only
+        # Triggered when Methods 1 & 2 found nothing with exactly 10 digits.
+        # Scans every line in the document for a line containing ONLY a
+        # 10-digit integer (no letters or symbols).
+        # ------------------------------------------------------------------
+        if keyword.lower() == 'meter number':
+            # Check if any result so far is actually a valid 10-digit number
+            existing = [
+                r['extracted_value'] for r in results
+                if r['keyword'] == keyword
+            ]
+            has_valid = any(
+                len(re.sub(r'\D', '', v)) == 10 for v in existing
+            )
+
+            if not has_valid:
+                print(f"  → Meter Number: offset search failed, trying regex fallback...")
+                ten_digit_pattern = re.compile(r'^\d{10}$')
+                for line_num, line in enumerate(lines):
+                    stripped = line.strip()
+                    if ten_digit_pattern.match(stripped):
+                        results.append({
+                            'keyword':         keyword,
+                            'found_at_line':   line_num,
+                            'line_offset':     'regex_fallback',
+                            'target_line':     line_num,
+                            'extracted_value': stripped,
+                            'match_type':      'regex_fallback'
+                        })
+                        print(f"  → Regex fallback found: {stripped} at line {line_num}")
+                        break  # Take the first match and stop
+
     df = pd.DataFrame(results)
     if not df.empty:
         df = df.drop_duplicates(subset=['keyword', 'extracted_value'], keep='first')
- 
+
     return df
 # END KEYWORD SEARCH
  
