@@ -88,10 +88,10 @@ def build_ui():
     root.configure(bg='#1A1A1A')
  
     # ── Fonts ──────────────────────────────────────────────
-    font_title  = ('Courier New', 13, 'bold')
-    font_label  = ('Courier New', 9)
-    font_button = ('Courier New', 14, 'bold')
-    font_log    = ('Courier New', 9)
+    font_title  = ('Courier New', 15, 'bold')
+    font_label  = ('Courier New', 11)
+    font_button = ('Courier New', 15, 'bold')
+    font_log    = ('Courier New', 11)
  
     # ── Header ─────────────────────────────────────────────
     tk.Label(
@@ -179,7 +179,6 @@ def build_ui():
     button.config(command=lambda: run_script(button, status_label, log_box))
  
     root.mainloop()
- 
  
 if __name__ == '__main__':
     build_ui()
