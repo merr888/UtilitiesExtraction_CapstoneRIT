@@ -24,7 +24,7 @@ def extract_pdf_text(pdf_path):
     Returns:
         Extracted text as string
     """
-    # RUBEN: Be careful of Microsoft Azure implementation in Python — can cause bugs
+    # NOTE FROM RIT PROFESSOR: Be careful of any Microsoft Azure implementation in Python — can cause bugs
     laparams = LAParams(
         line_margin=0.5,
         char_margin=2.0,
@@ -98,9 +98,6 @@ def extract_values_after_keywords(pdf_path, keyword_offset_dict):
  
         # ------------------------------------------------------------------
         # Method 2: keyword split across two consecutive lines
-        # (FIX) This block was previously OUTSIDE the keyword loop, so it
-        # only ever ran for the last keyword in the dict.  It is now
-        # correctly indented inside the loop so every keyword is checked.
         # ------------------------------------------------------------------
         for line_num in range(len(lines) - 1):
             combined = (lines[line_num] + lines[line_num + 1]).replace(' ', '').replace('\n', '')
@@ -132,9 +129,7 @@ def extract_values_after_keywords(pdf_path, keyword_offset_dict):
  
         # ------------------------------------------------------------------
         # Method 3: regex fallback for Meter Number only
-        # Triggered when Methods 1 & 2 found nothing with exactly 10 digits.
-        # Scans every line in the document for a line containing ONLY a
-        # 10-digit integer (no letters or symbols).
+        # Scans every line in the document for a line containing ONLY a 10-digit integer (no letters or symbols).
         # ------------------------------------------------------------------
         if keyword.lower() == 'meter number':
             # Check if any result so far is actually a valid 10-digit number
@@ -161,7 +156,7 @@ def extract_values_after_keywords(pdf_path, keyword_offset_dict):
                             'match_type':      'regex_fallback'
                         })
                         print(f"  → Regex fallback found: {stripped} at line {line_num}")
-                        break  # Take the first match and stop
+                        break  
 
     df = pd.DataFrame(results)
     if not df.empty:
@@ -191,7 +186,6 @@ def select_best_result(keyword, candidates):
     """
     Given a keyword and a list of candidate extracted_value strings,
     return the single best value according to per-keyword business rules:
- 
         'amount due'              → largest dollar amount
         'statement date'          → first (earliest-encountered) value
         'meter number'            → first value that is exactly 10 digits
@@ -199,8 +193,7 @@ def select_best_result(keyword, candidates):
         'ccf'                     → largest integer
         'total electricity cost'  → largest dollar amount
         'total natural gas cost'  → largest dollar amount
- 
-    Falls back to the first candidate if no rule produces a match.
+    Falls back to the first candidate if no rule produces a match, can edit to produce an error if needed. 
  
     Args:
         keyword:    The keyword string (case-insensitive match used internally)
@@ -228,11 +221,12 @@ def select_best_result(keyword, candidates):
     # --- exactly 10-digit integer ----------------------------------------
     elif kw == 'meter number':
         for v in candidates:
-            digits_only = re.sub(r'\D', '', v)
+            digits_only = re.sub(r'\D', '', str(v))
             if len(digits_only) == 10:
-                return digits_only          # return clean digits
-        # Fallback: return first candidate if none are exactly 10 digits
-        return candidates[0]
+                return digits_only
+        # If no candidate has exactly 10 digits, return empty string
+        # rather than returning a bad value like "billed"
+        return ""
  
     # --- largest integer -------------------------------------------------
     elif kw in ('kwh', 'ccf'):
@@ -292,10 +286,10 @@ class PDFScanner:
         self.watch_folder  = Path(watch_folder)
         self.output_folder = Path(output_folder)
         self.processed_log = processed_log
- 
+
         self.output_folder.mkdir(exist_ok=True)
         self.processed_files = self._load_processed_log()
- 
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -304,11 +298,11 @@ class PDFScanner:
             with open(self.processed_log, 'r') as f:
                 return json.load(f)
         return {}
- 
+
     def _save_processed_log(self):
         with open(self.processed_log, 'w') as f:
             json.dump(self.processed_files, f, indent=2)
- 
+
     def _get_new_files(self):
         """Return PDFs in watch_folder that are new or modified since last run."""
         all_pdfs  = list(self.watch_folder.glob('*.pdf'))
@@ -320,50 +314,49 @@ class PDFScanner:
                self.processed_files[file_key] != file_modified:
                 new_files.append(pdf_file)
         return new_files
- 
+
     def _process_single_file(self, pdf_path, keyword_offset_dict):
         """
         Extract raw keyword data from one PDF and return the best-result row.
- 
+
         Args:
             pdf_path:            Path object for the PDF
             keyword_offset_dict: Keyword → offset mapping
- 
+
         Returns:
             Single-row DataFrame, or None on error.
         """
         print(f"\n{'='*60}")
         print(f"Processing: {pdf_path.name}")
         print(f"{'='*60}")
- 
+
         try:
             # Save raw text for debugging
-            # TODO: remove _raw.txt output in final implementation
             full_text       = extract_pdf_text(str(pdf_path))
             txt_output_file = self.output_folder / f"{pdf_path.stem}_raw.txt"
             with open(txt_output_file, 'w', encoding='utf-8') as f:
                 f.write(full_text)
-            print(f"✓ Saved raw text to {txt_output_file}")
- 
+            print(f"OK: Saved raw text to {txt_output_file}")
+
             # Extract all candidate values
             df_raw = extract_values_after_keywords(str(pdf_path), keyword_offset_dict)
             df_raw['source_file']    = pdf_path.name
             df_raw['processed_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
- 
-            print(f"✓ Raw extraction: {len(df_raw)} candidate values found")
- 
+
+            print(f"OK: Raw extraction: {len(df_raw)} candidate values found")
+
             # Reduce to one best value per keyword
             df_row = build_single_row(df_raw, keyword_offset_dict)
             df_row['source_file']    = pdf_path.name
             df_row['processed_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
- 
-            print(f"✓ Best-result row built ({len(df_row.columns)} columns)")
+
+            print(f"OK: Best-result row built ({len(df_row.columns)} columns)")
             return df_row
- 
+
         except Exception as e:
-            print(f"✗ Error processing {pdf_path.name}: {e}")
+            print(f"ERROR: Error processing {pdf_path.name}: {e}")
             return None
- 
+
     # ------------------------------------------------------------------
     # Public entry point — call this once per button press
     # ------------------------------------------------------------------
@@ -371,9 +364,9 @@ class PDFScanner:
         """
         Scan the watch folder for new PDFs, extract data, and append
         each result as a new row in the target Excel file.
- 
+
         Designed to be called once per button press (no loop / sleep).
- 
+
         Args:
             keyword_offset_dict: Keyword → line-offset mapping
             excel_file_path:     Absolute path to the existing target Excel file
@@ -382,70 +375,84 @@ class PDFScanner:
         print(f"Scan triggered at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"Watching: {self.watch_folder}")
         print(f"{'#'*60}")
- 
+
         new_files = self._get_new_files()
- 
+
         if not new_files:
-            print("✓ No new files found — nothing to process.")
+            print("OK: No new files found — nothing to process.")
             return
- 
+
         print(f"✓ {len(new_files)} new file(s) to process")
- 
+
         excel_path = Path(excel_file_path)
         if not excel_path.exists():
-            print(f"✗ Target Excel file not found: {excel_path}")
+            print(f"ERROR: Target Excel file not found: {excel_path}")
             return
- 
-        for pdf_file in new_files:
-            df_row = self._process_single_file(pdf_file, keyword_offset_dict)
- 
-            if df_row is not None and not df_row.empty:
-                try:
-                    book       = load_workbook(excel_path)
-                    sheet_name = "Input Data"
- 
-                    if sheet_name not in book.sheetnames:
-                        print(f"✗ Sheet '{sheet_name}' not found in {excel_path.name}")
-                        continue
- 
-                    sheet     = book[sheet_name]
-                    start_row = sheet.max_row  # Append after last used row
- 
-                    with pd.ExcelWriter(
+
+        for pdf_file in new_files:                                          
+            df_row = self._process_single_file(pdf_file, keyword_offset_dict)  
+
+            if df_row is not None and not df_row.empty:                   
+                try:                                
+                    sheet_name = "InPut Sheet"                                             # UPDATE HERE WHEN NEW SYSTEM              
+
+                    # Open, read, and immediately close before ExcelWriter touches the file
+                    book = load_workbook(excel_path)                  
+
+                    if sheet_name not in book.sheetnames:                
+                        print(f"ERROR: Sheet '{sheet_name}' not found in {excel_path.name}")
+                        book.close()                              
+                        continue                                        
+
+                    # Count only non-empty rows to avoid gap bugs
+                    sheet = book[sheet_name]                      
+                    start_row = sum(                               
+                        1 for row in sheet.iter_rows()
+                        if any(cell.value is not None for cell in row)
+                    )
+                    book.close()  # Release file lock before ExcelWriter opens it
+
+                    with pd.ExcelWriter(                            
                         excel_path,
                         engine="openpyxl",
                         mode="a",
                         if_sheet_exists="overlay"
                     ) as writer:
-                        df_row.to_excel(
+                        df_row.to_excel(                
                             writer,
                             sheet_name=sheet_name,
                             index=False,
-                            header=False,       # Don't re-write headers
+                            header=False,
                             startrow=start_row
                         )
- 
-                    print(f"✓ Appended row to '{sheet_name}' in {excel_path.name}")
- 
-                    # Mark as processed only after a successful write
-                    self.processed_files[str(pdf_file)] = os.path.getmtime(pdf_file)
- 
-                except Exception as e:
-                    print(f"✗ Failed to write {pdf_file.name} to Excel: {e}")
- 
-        self._save_processed_log()
-        print(f"\n✓ Scan complete!")
+
+                    print(f"OK: Appended row to '{sheet_name}' in {excel_path.name}")  
+                    self.processed_files[str(pdf_file)] = os.path.getmtime(pdf_file) 
+
+                except Exception as e:                                
+                    print(f"ERROR: Failed to write {pdf_file.name} to Excel: {e}")      
+
+        self._save_processed_log()                                     
+        print(f"\nOK: Scan complete!")                               
 # END AUTOMATED PDF SCANNING
- 
  
 # ============================================================
 # USAGE — called when a button triggers this script
 # ============================================================
 if __name__ == "__main__":
-    WATCH_FOLDER  = 'incoming_pdfs'     # Folder to monitor for new PDFs
-    OUTPUT_FOLDER = 'extracted_data'    # Where to save debug/intermediate files
-    EXCEL_FILE    = '/Users/ecmerritt/Desktop/Capstone/Testing.xlsx'
+    WATCH_FOLDER  = r'C:\Users\cvazquez\OneDrive - Goodwill of the Finger Lakes, Inc\RIT Sustainability Project\Functional Model\incoming_pdfs'     # Folder to monitor for new PDFs
+    OUTPUT_FOLDER = r'C:\Users\cvazquez\OneDrive - Goodwill of the Finger Lakes, Inc\RIT Sustainability Project\Functional Model\extracted_data'    # Where to save debug/intermediate files
+    EXCEL_FILE    = r'C:\Users\cvazquez\OneDrive - Goodwill of the Finger Lakes, Inc\RIT Sustainability Project\Functional Model\DataStagingFile_20260416.xlsx'
  
+ # Fully written out if only one user has ownership of the project. Else, try: 
+
+    '''
+    BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
+    WATCH_FOLDER  = os.path.join(BASE_DIR, 'incoming_pdfs')
+    OUTPUT_FOLDER = os.path.join(BASE_DIR, 'extracted_data')
+    EXCEL_FILE    = os.path.join(BASE_DIR, 'YourWorkbookName.xlsx')
+    '''
+
     # Keyword → line offset dictionary
     # Using RGE 32 as reference
     KEYWORD_OFFSETS = {
@@ -459,9 +466,7 @@ if __name__ == "__main__":
     }
  
     # ------------------------------------------------------------------
-    # This block is the single-run entry point.
-    # Replace with a button callback when I work out the UI portion:) —
+    # This block is the single-run entry point
     # ------------------------------------------------------------------
     scanner = PDFScanner(WATCH_FOLDER, OUTPUT_FOLDER)
-    scanner.run_scan(KEYWORD_OFFSETS, EXCEL_FILE)
-  
+    scanner.run_scan(KEYWORD_OFFSETS, EXCEL_FILE)  
